@@ -25,6 +25,8 @@ interface IMedia {
         bytes32 contentHash;
         // A SHA256 hash of the content pointed to by metadataURI
         bytes32 metadataHash;
+        // ID of the family where this token was minted
+        uint256 familyId;
     }
 
     event TokenURIUpdated(uint256 indexed _tokenId, address owner, string _uri);

@@ -15,6 +15,7 @@ import {
 import {Decimal} from "./Decimal.sol";
 import {IMarket} from "./interfaces/IMarket.sol";
 import "./interfaces/IMedia.sol";
+import {IFamilies} from "./interfaces/IFamilies.sol";
 
 /**
  * @title A media value system, with perpetual equity to creators
@@ -32,6 +33,9 @@ contract Media is IMedia, ERC721Burnable, ReentrancyGuard {
 
     // Address for the market
     address public marketContract;
+
+    // Address for the families
+    address public familiesContract;
 
     // Mapping from token to previous owner of the token
     mapping(uint256 => address) public previousTokenOwners;
@@ -53,6 +57,9 @@ contract Media is IMedia, ERC721Burnable, ReentrancyGuard {
 
     // Mapping from contentHash to bool
     mapping(bytes32 => bool) private _contentHashes;
+
+    // Mapping from token id to familyId
+    mapping(uint256 => uint256) public familyIds;
 
     //keccak256("Permit(address spender,uint256 tokenId,uint256 nonce,uint256 deadline)");
     bytes32 public constant PERMIT_TYPEHASH =
@@ -153,8 +160,12 @@ contract Media is IMedia, ERC721Burnable, ReentrancyGuard {
      * @notice On deployment, set the market contract address and register the
      * ERC721 metadata interface
      */
-    constructor(address marketContractAddr) public ERC721("Zora", "ZORA") {
+    constructor(address marketContractAddr, address familiesContractAddr)
+        public
+        ERC721("Zora", "ZORA")
+    {
         marketContract = marketContractAddr;
+        familiesContract = familiesContractAddr;
         _registerInterface(_INTERFACE_ID_ERC721_METADATA);
     }
 
@@ -487,6 +498,7 @@ contract Media is IMedia, ERC721Burnable, ReentrancyGuard {
         _setTokenMetadataHash(tokenId, data.metadataHash);
         _setTokenMetadataURI(tokenId, data.metadataURI);
         _setTokenURI(tokenId, data.tokenURI);
+        _setFamilyId(tokenId, data.familyId);
         _creatorTokens[creator].add(tokenId);
         _contentHashes[data.contentHash] = true;
 
@@ -517,6 +529,73 @@ contract Media is IMedia, ERC721Burnable, ReentrancyGuard {
         onlyExistingToken(tokenId)
     {
         _tokenMetadataURIs[tokenId] = metadataURI;
+    }
+
+    function _setFamilyId(uint256 tokenId, uint256 familyId)
+        internal
+        virtual
+        onlyExistingToken(tokenId)
+    {
+        familyIds[tokenId] = familyId;
+    }
+
+    /// @dev Is this transfer valid within family limits
+    /// @param to address the token will be transferred to
+    /// @param tokenId ID of the token
+    function validFamilyTransfer(address to, uint256 tokenId)
+        public
+        view
+        returns (bool)
+    {
+        // creator must be an adult, or, transfer must be within the same family
+        return
+            IFamilies(familiesContract).areTheyAnAdult(
+                familyIds[tokenId],
+                tokenCreators[tokenId]
+            ) ||
+            IFamilies(familiesContract).areTheyFamily(familyIds[tokenId], to);
+    }
+
+    modifier onlyValidFamilyTransfers(address to, uint256 tokenId) {
+        require(
+            validFamilyTransfer(to, tokenId),
+            "creator must be an adult, or the token must stay in the family"
+        );
+        _;
+    }
+
+    /**
+     * @dev See {IERC721-transferFrom}.
+     */
+    function transferFrom(
+        address from,
+        address to,
+        uint256 tokenId
+    ) public virtual override {
+        super.transferFrom(from, to, tokenId);
+    }
+
+    /**
+     * @dev See {IERC721-safeTransferFrom}.
+     */
+    function safeTransferFrom(
+        address from,
+        address to,
+        uint256 tokenId
+    ) public virtual override {
+        super.safeTransferFrom(from, to, tokenId);
+    }
+
+    /**
+     * @dev See {IERC721-safeTransferFrom}.
+     */
+    function safeTransferFrom(
+        address from,
+        address to,
+        uint256 tokenId,
+        bytes memory _data
+    ) public virtual override {
+        super.safeTransferFrom(from, to, tokenId, _data);
     }
 
     /**
